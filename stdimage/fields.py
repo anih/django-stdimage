@@ -4,7 +4,7 @@ import os, shutil
 from django.conf import settings
 from django.core.files.storage import FileSystemStorage
 from django.db.models import signals
-from django.db.models.fields.files import ImageField
+from django.db.models.fields.files import ImageField, FileDescriptor
 
 from forms import StdImageFormField
 from widgets import DelAdminFileWidget
@@ -29,9 +29,15 @@ class ThumbnailField(object):
     def size(self):
         return self.storage.size(self.name)
 
-class StdImageFileDescriptor( ImageFileDescriptor ):
+class StdImageFileDescriptor( FileDescriptor ):
     def __set__( self, instance, value ):
+        previous_file = instance.__dict__.get( self.field.name )
         super( StdImageFileDescriptor, self ).__set__( instance, value )
+        if previous_file is not None:
+            self.field.update_dimension_fields( instance, force = True )
+            signals.post_init.connect( self.field.update_dimension_fields, sender = instance.__class__ )
+            signals.post_save.connect( self.field._rename_resize_image, sender = instance.__class__ )
+            signals.post_init.connect( self.field._set_thumbnail, sender = instance.__class__ )
         self.field._set_thumbnail( instance )
 
 class StdImageField(ImageField):
